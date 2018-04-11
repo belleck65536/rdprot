@@ -32,7 +32,7 @@ $DebugPreference = "continue"
 $wail2banInstall = ""+(Get-Location)+"\"
 $wail2banScript  = $wail2banInstall+"wail2ban.ps1"  #$MyInvocation.MyCommand.Name
 $ConfigFile      = $wail2banInstall+"wail2ban_config.xml"
-$BannedIPLog           = $wail2banInstall+"wail2ban_ban.xml"
+$BannedIPLog     = $wail2banInstall+"wail2ban_ban.xml"
 $logFile         = $wail2banInstall+"wail2ban_log.log"
 
 
@@ -83,10 +83,7 @@ if ($OSVersion -match "2016") { $BLOCK_TYPE = "NETSH" }
 
 #:! Get-NetAdapter
 #:! mettre SelfList dans whitelist
-$SelfList = @() 
-foreach ($listing in ((ipconfig | findstr [0-9].\.))) {
-            if ($listing -match "Address" ){ $SelfList += $listing.Split()[-1] }
-}
+$SelfList = $(Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred).IPAddress
 
 
 ################################################################################
@@ -109,6 +106,29 @@ function help {
 	" -help      : This message."
 	" "
 }
+
+
+# vérification présence règle
+function fw_rule_exists {
+    return $( Get-NetFirewallRule -DisplayName $prefixe )
+}
+
+
+# création règle pare feu
+function fw_rule_create {
+    if ( ! $(fw_rule_exists) ) {
+        New-NetFirewallRule -DisplayName $prefixe -Enabled -Profile Any -Direction Inbound -Action Block -Protocol Any
+    }
+}
+
+# mise à jour règle
+function fw_rule_update ( $ip ) {
+    if ( ! $(fw_rule_exists) ) {
+        fw_rule_create
+    }
+    Get-NetFirewallRule -DisplayName $prefixe | Get-NetFirewallAddressFilter | Set-NetFirewallAddressFilter -RemoteAddress $ip
+}
+
 
 
 # journalisation vers Windows
