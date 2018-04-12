@@ -1,0 +1,24 @@
+<wail2ban>
+  <conf>
+    <CHECK_WINDOW>120</CHECK_WINDOW>
+    <CHECK_COUNT>3</CHECK_COUNT>
+    <MAX_BANDURATION>7776000</MAX_BANDURATION>
+    <w2b_log>Application</w2b_log>
+    <ruleprefix>wail2ban block:</ruleprefix>
+  </conf>
+  <events>
+    <System>
+    </System>
+    <Security>
+      <entry id="4625" desc="RDP Logins failures" />
+      <entry id="94627" desc="Dummy failure" />
+    </Security>
+    <Application>
+      <entry id="18456" desc="MSSQL Logins failures" />
+    </Application>
+  </events>
+  <whitelist>
+    <ip>127.0.0.1</ip>
+    <ip>127.0.0.0/8</ip>
+  </whitelist>
+</wail2ban>
