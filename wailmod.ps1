@@ -48,12 +48,16 @@ $MAX_BANDURATION	= $cfg.wail2ban.conf.MAX_BANDURATION
 $RecordEventLog		= $cfg.wail2ban.conf.w2b_log     # Where we store our own event messages
 $WhiteList			= $cfg.wail2ban.whitelist.ip
 
-if ( $CHECK_WINDOW -lt 0 ) { exit 2 }
-if ( $CHECK_COUNT -lt 0 ) { exit 2 }
-if ( $MAX_BANDURATION -lt 0 ) { exit 2 }
+if ( $CHECK_WINDOW		-lt 0 ) { exit 2 }
+if ( $CHECK_COUNT		-lt 0 ) { exit 2 }
+if ( $MAX_BANDURATION	-lt 0 ) { exit 2 }
 
-$EventTypes = "Application,Security,System"          #Event logs we allow to be processed
 $FirewallRule = "Wail2Ban"  # What we name our Rules
+$EventTypes = @(
+	 "Application"
+	,"Security"
+	,"System"
+)
 
 
 # regex IPv4
@@ -74,13 +78,11 @@ $null = $CheckEvents.columns.add("EventDescription")
 #:! voir si netsh ne peut pas totalement être remplacé par un cmdlet PS --> incompatible avec NT6.1
 $OSVersion = invoke-expression "wmic os get Caption /value"
 #if ($OSVersion -match "2008") { $BLOCK_TYPE = "NETSH" } # compatibilité NT6.1
-if ($OSVersion -match "2012") { $BLOCK_TYPE = "NETSH" }
-if ($OSVersion -match "2016") { $BLOCK_TYPE = "NETSH" }
+if ( $OSVersion -match "2012" ) { $BLOCK_TYPE = "NETSH" }
+if ( $OSVersion -match "2016" ) { $BLOCK_TYPE = "NETSH" }
 
 
-#:! Get-NetAdapter
-#:! mettre SelfList dans whitelist
-$SelfList = $(Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred).IPAddress
+$WhiteList += $(Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred).IPAddress
 
 
 ################################################################################
@@ -107,25 +109,25 @@ function help {
 
 # vérification présence règle
 function fw_rule_exists {
-	return $( Get-NetFirewallRule -DisplayName $prefixe )
+	return $( Get-NetFirewallRule -DisplayName $FirewallRule )
 }
 
 
 # création règle pare feu
 function fw_rule_create {
 	if ( ! $(fw_rule_exists) ) {
-		New-NetFirewallRule -DisplayName $prefixe -Enabled -Profile Any -Direction Inbound -Action Block -Protocol Any
+		New-NetFirewallRule -DisplayName $FirewallRule -Enabled -Profile Any -Direction Inbound -Action Block -Protocol Any
 	}
 }
+
 
 # mise à jour règle
 function fw_rule_update ( $ip ) {
 	if ( ! $(fw_rule_exists) ) {
 		fw_rule_create
 	}
-	Get-NetFirewallRule -DisplayName $prefixe | Get-NetFirewallAddressFilter | Set-NetFirewallAddressFilter -RemoteAddress $ip
+	Get-NetFirewallRule -DisplayName $FirewallRule | Get-NetFirewallAddressFilter | Set-NetFirewallAddressFilter -RemoteAddress $ip
 }
-
 
 
 # journalisation vers Windows
@@ -163,6 +165,20 @@ function error		($text) { log "E" $text }
 function warning	($text) { log "W" $text }
 function debug		($text) { log "D" $text }
 function actioned	($text) { log "A" $text }
+
+
+# obtenir liste des ban
+function ban_read {
+	if ( test-path $BannedIPLog ) {
+		[xml]$ip = get-content $BannedIPLog
+	}
+	return $ip.wail2ban.bans
+}
+
+
+# enregistrer liste des ban
+function ban_write ( $ip ) {
+}
 
 
 #Get the current list of wail2ban bans
