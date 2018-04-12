@@ -3,7 +3,7 @@
     <CHECK_WINDOW>120</CHECK_WINDOW>
     <CHECK_COUNT>3</CHECK_COUNT>
     <MAX_BANDURATION>7776000</MAX_BANDURATION>
-    <w2b_log>Application</w2b_log>
+    <log>Application</log>
     <ruleprefix>wail2ban block:</ruleprefix>
   </conf>
   <events>
@@ -20,5 +20,6 @@
   <whitelist>
     <ip>127.0.0.1</ip>
     <ip>127.0.0.0/8</ip>
+    <ip>255.255.255.255/255</ip>
   </whitelist>
 </wail2ban>
