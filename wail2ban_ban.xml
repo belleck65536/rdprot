@@ -1,6 +1,5 @@
 <wail2ban>
-  <bans>
-    <date ip="0.0.0.0">120</date>
-    <date ip="1.1.1.1">120</date>
-  </bans>
+	<ban date="155657764" ip="8.8.4.4"/>
+	<ban date="154853264" ip="8.8.8.8"/>
+	<ban date="154825963" ip="1.1.1.1"/>
 </wail2ban>
