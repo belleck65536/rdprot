@@ -10,11 +10,6 @@
 #    ajout au banlog (IP + date de ban)
 #    modification de la règle (ajout de l'IP)
 #
-$ip = $e.CreateElement("ip") # création d'un noeud
-# $ip.SetAttribute('name','barracas') # pour ajouter des atrtibuts à un noeud
-$ip.InnerText = "0.0.0.0/1"
-$e.wail2ban.whitelist.AppendChild($ip)
-$e.Save(".\ee.xml")
 ################################################################################
 #
 
@@ -88,8 +83,6 @@ $WhiteList += $(Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred).IP
 ################################################################################
 # Functions
 #
-# For help, read the below function.
-#
 function help {
 	"`nwail2ban   `n"
 	"wail2ban is an attempt to recreate fail2ban for windows, hence [w]indows f[ail2ban]."
@@ -104,45 +97,6 @@ function help {
 	" -jailbreak : bust out all the currently banned IPs"
 	" -help      : This message."
 	" "
-}
-
-
-# vérification présence règle
-function fw_rule_exists {
-	return $( Get-NetFirewallRule -DisplayName $FirewallRule )
-}
-
-
-# création règle pare feu
-function fw_rule_create {
-	if ( ! $(fw_rule_exists) ) {
-		New-NetFirewallRule -DisplayName $FirewallRule -Enabled -Profile Any -Direction Inbound -Action Block -Protocol Any
-	}
-}
-
-
-# mise à jour règle
-function fw_rule_update ( $ip ) {
-	if ( ! $(fw_rule_exists) ) {
-		fw_rule_create
-	}
-	Get-NetFirewallRule -DisplayName $FirewallRule | Get-NetFirewallAddressFilter | Set-NetFirewallAddressFilter -RemoteAddress $ip
-}
-
-
-# journalisation vers Windows
-function event ($text,$task,$result) {
-	$event = new-object System.Diagnostics.EventLog($RecordEventLog)
-	$event.Source="wail2ban"
-	switch  ($task) {
-		"ADD"    { $logeventID = 1000 }
-		"REMOVE" { $logeventID = 2000 }
-	}
-	switch ($result) {
-		"FAIL"   { $eventtype = [System.Diagnostics.EventLogEntryType]::Error; $logeventID += 1 }
-		default  { $eventtype = [System.Diagnostics.EventLogEntryType]::Information}
-	}
-	$event.WriteEntry($text,$eventType,$logeventID)
 }
 
 
@@ -167,19 +121,92 @@ function debug		($text) { log "D" $text }
 function actioned	($text) { log "A" $text }
 
 
+# vérification présence règle
+function fw_rule_exists {
+	return $( Get-NetFirewallRule -DisplayName $FirewallRule )
+}
+
+
+# création règle pare feu
+function fw_rule_create {
+	if ( ! $(fw_rule_exists) ) {
+		New-NetFirewallRule -DisplayName $FirewallRule -Enabled -Profile Any -Direction Inbound -Action Block -Protocol Any
+	}
+}
+
+
+# mise à jour règle
+# accepte un tableau mono-dimension
+function fw_rule_update ( $ip ) {
+	if ( ! $(fw_rule_exists) ) {
+		fw_rule_create
+	}
+	Get-NetFirewallRule -DisplayName $FirewallRule | Get-NetFirewallAddressFilter | Set-NetFirewallAddressFilter -RemoteAddress $ip
+}
+
+
+# suppression règle pare-feu
+function fw_rule_remove {
+	
+}
+
+
+# journalisation vers Windows
+function event ($text,$task,$result) {
+	$event = new-object System.Diagnostics.EventLog($RecordEventLog)
+	$event.Source="wail2ban"
+	switch ($task) {
+		"ADD"    { $logeventID = 1000 }
+		"REMOVE" { $logeventID = 2000 }
+	}
+	switch ($result) {
+		"FAIL"   { $eventtype = [System.Diagnostics.EventLogEntryType]::Error; $logeventID += 1 }
+		default  { $eventtype = [System.Diagnostics.EventLogEntryType]::Information}
+	}
+	$event.WriteEntry($text,$eventType,$logeventID)
+}
+
+
 # obtenir liste des ban
 function ban_read {
 	if ( test-path $BannedIPLog ) {
 		[xml]$ip = get-content $BannedIPLog
+		return $ip.wail2ban.ban
 	}
-	return $ip.wail2ban.bans
 }
 
 
 # enregistrer liste des ban
-function ban_write ( $ip ) {
+# accepte en entrée une liste de tableau à 2 dimensions
+# @( @{ "ip" = "x.x.x.x" ; "date" = "EPOCH" } , @{ "ip" = "x.x.x.x" ; "date" = "EPOCH" } )
+function ban_write ($bans) {
+	$w2b = new-object System.Xml.XmlDocument
+	$w2b.AppendChild($w2b.CreateElement("wail2ban"))
+
+	foreach ($b in $bans) {
+		$ip = $w2b.CreateAttribute("ip")
+		$ip.Value = $b.ip
+
+		$date = $w2b.CreateAttribute("date")
+		$date.Value = $b.date
+
+		$ban = $w2b.CreateElement("ban")
+		$ban.Attributes.Append($ip)
+		$ban.Attributes.Append($date)
+
+		$w2b.LastChild.AppendChild($ban)
+	}
+
+	$w2b.Save($BannedIPLog)
 }
 
+
+# lecture log
+
+
+
+#################################################################################################
+#################################################################################################
 
 #Get the current list of wail2ban bans
 #:! tranformer en cmdlet PS
