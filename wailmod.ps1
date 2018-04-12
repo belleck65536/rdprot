@@ -1,5 +1,10 @@
-################################################################################
+﻿################################################################################
 #
+#
+# no_args     : analyse des logs et bannissement des anomalies
+# -unban <ip> : révoquer un bannissement (all = tout vider)
+# -uninstall  : supprimer tâche planifiée et règle de pare-feu ?
+# -...
 #
 # sur évènement/tache planhifiée :
 # argument = -detect
@@ -20,8 +25,8 @@ $DebugPreference = "continue"
 #  Files
 #
 #:! revoir dossier du script et nom du script
-$wail2banInstall = ""+(Get-Location)+"\"
-$wail2banScript  = $wail2banInstall+"wail2ban.ps1"  #$MyInvocation.MyCommand.Name
+$wail2banInstall = "" + ( Get-Location ) + "\"
+$wail2banScript  = $wail2banInstall+$MyInvocation.MyCommand.Name
 $ConfigFile      = $wail2banInstall+"wail2ban_config.xml"
 $BannedIPLog     = $wail2banInstall+"wail2ban_ban.xml"
 $logFile         = $wail2banInstall+"wail2ban_log.log"
@@ -37,22 +42,25 @@ if ( Test-Path $ConfigFile ) {
 }
 
 
-$CHECK_WINDOW		= $cfg.wail2ban.conf.CHECK_WINDOW
-$CHECK_COUNT		= $cfg.wail2ban.conf.CHECK_COUNT
-$MAX_BANDURATION	= $cfg.wail2ban.conf.MAX_BANDURATION
-$RecordEventLog		= $cfg.wail2ban.conf.w2b_log     # Where we store our own event messages
+$Check_Window		= $cfg.wail2ban.conf.check_window
+$Check_Count		= $cfg.wail2ban.conf.check_count
+$Max_BanDuration	= $cfg.wail2ban.conf.max_banduration
+$RecordEventLog		= $cfg.wail2ban.conf.log
 $WhiteList			= $cfg.wail2ban.whitelist.ip
 
-if ( $CHECK_WINDOW		-lt 0 ) { exit 2 }
-if ( $CHECK_COUNT		-lt 0 ) { exit 2 }
-if ( $MAX_BANDURATION	-lt 0 ) { exit 2 }
+if ( $Check_Window		-lt 0 ) { exit 2 }
+if ( $Check_Count		-lt 0 ) { exit 2 }
+if ( $Max_BanDuration	-lt 0 ) { exit 2 }
 
-$FirewallRule = "Wail2Ban"  # What we name our Rules
+$FirewallRule = "Wail2Ban"
 $EventTypes = @(
 	 "Application"
 	,"Security"
 	,"System"
 )
+
+
+$WhiteList += $( Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred ).IPAddress
 
 
 # regex IPv4
@@ -64,20 +72,17 @@ $BannedIPs = @{}
 
 
 # Incoming event structure
-$CheckEvents = New-object system.data.datatable("CheckEvents")
-$null = $CheckEvents.columns.add("EventLog")
-$null = $CheckEvents.columns.add("EventID")
-$null = $CheckEvents.columns.add("EventDescription")
+$CheckEvents = New-object system.data.datatable( "CheckEvents" )
+$null = $CheckEvents.columns.add( "EventLog" )
+$null = $CheckEvents.columns.add( "EventID" )
+$null = $CheckEvents.columns.add( "EventDescription" )
 
 
 #:! voir si netsh ne peut pas totalement être remplacé par un cmdlet PS --> incompatible avec NT6.1
 $OSVersion = invoke-expression "wmic os get Caption /value"
-#if ($OSVersion -match "2008") { $BLOCK_TYPE = "NETSH" } # compatibilité NT6.1
+#if ( $OSVersion -match "2008" ) { $BLOCK_TYPE = "NETSH" } # compatibilité NT6.1
 if ( $OSVersion -match "2012" ) { $BLOCK_TYPE = "NETSH" }
 if ( $OSVersion -match "2016" ) { $BLOCK_TYPE = "NETSH" }
-
-
-$WhiteList += $(Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred).IPAddress
 
 
 ################################################################################
@@ -100,45 +105,72 @@ function help {
 }
 
 
-#Log things to file and debug
-#:! est-ce qu'il faut tout logguer ?
-function log ($type, $text) {
-	$output = ""+(get-date -format u).replace("Z","")+" $tag $text"
-	if ($type -eq "A") { $output | out-file $logfile -append}
-	switch ($type) {
-		"D" { write-debug $output}
-		"W" { write-warning "WARNING: $output"} 
-		"E" { write-error "ERROR: $output"}
-		"A" { write-debug $output }
+# journalisation vers Windows
+function event ( $text, $task, $result ) {
+	$event = new-object System.Diagnostics.EventLog( $RecordEventLog )
+	$event.Source = $FirewallRule
+	switch ( $task ) {
+		"ADD"    { $logeventID = 1000 }
+		"REMOVE" { $logeventID = 2000 }
+	}
+	switch ( $result ) {
+		"FAIL"   { $eventtype = [System.Diagnostics.EventLogEntryType]::Error; $logeventID += 1 }
+		default  { $eventtype = [System.Diagnostics.EventLogEntryType]::Information}
+	}
+	$event.WriteEntry( $text, $eventType, $logeventID )
+}
+
+
+# Log things to file and debug
+function log ( $type, $text ) {
+	$output = "" + ( get-date -format u ).replace( "Z", "" ) + " $text"
+
+	switch ( $type ) {
+		"D" {
+            write-debug $output
+        }
+		"W" {
+            write-warning "WARNING: $output"
+            $output | out-file $logfile -append
+        }
+		"E" {
+            write-error "ERROR: $output"
+            $output | out-file $logfile -append
+        }
+		"A" {
+            write-debug $output
+            $output | out-file $logfile -append
+        }
 	}
 }
 
 
 #Log type functions
-function error		($text) { log "E" $text }
-function warning	($text) { log "W" $text }
-function debug		($text) { log "D" $text }
-function actioned	($text) { log "A" $text }
+function error		( $text ) { log "E" $text }
+function warning	( $text ) { log "W" $text }
+function debug		( $text ) { log "D" $text }
+function actioned	( $text ) { log "A" $text }
 
 
 # vérification présence règle
 function fw_rule_exists {
-	return $( Get-NetFirewallRule -DisplayName $FirewallRule )
+	return $( Get-NetFirewallRule -DisplayName $FirewallRule -ErrorAction SilentlyContinue )
 }
 
 
 # création règle pare feu
 function fw_rule_create {
-	if ( ! $(fw_rule_exists) ) {
-		New-NetFirewallRule -DisplayName $FirewallRule -Enabled -Profile Any -Direction Inbound -Action Block -Protocol Any
+	if ( ! $( fw_rule_exists ) ) {
+		New-NetFirewallRule -DisplayName $FirewallRule -Enabled False -Direction Inbound -Action Block
 	}
 }
 
 
 # mise à jour règle
 # accepte un tableau mono-dimension
+#:! s'assurer que $ip n'est pas nul sinon ne pas traiter la mise à jour
 function fw_rule_update ( $ip ) {
-	if ( ! $(fw_rule_exists) ) {
+	if ( ! $( fw_rule_exists ) ) {
 		fw_rule_create
 	}
 	Get-NetFirewallRule -DisplayName $FirewallRule | Get-NetFirewallAddressFilter | Set-NetFirewallAddressFilter -RemoteAddress $ip
@@ -147,23 +179,7 @@ function fw_rule_update ( $ip ) {
 
 # suppression règle pare-feu
 function fw_rule_remove {
-	
-}
-
-
-# journalisation vers Windows
-function event ($text,$task,$result) {
-	$event = new-object System.Diagnostics.EventLog($RecordEventLog)
-	$event.Source="wail2ban"
-	switch ($task) {
-		"ADD"    { $logeventID = 1000 }
-		"REMOVE" { $logeventID = 2000 }
-	}
-	switch ($result) {
-		"FAIL"   { $eventtype = [System.Diagnostics.EventLogEntryType]::Error; $logeventID += 1 }
-		default  { $eventtype = [System.Diagnostics.EventLogEntryType]::Information}
-	}
-	$event.WriteEntry($text,$eventType,$logeventID)
+	Remove-NetFirewallRule -DisplayName $FirewallRule -ErrorAction SilentlyContinue
 }
 
 
@@ -179,67 +195,32 @@ function ban_read {
 # enregistrer liste des ban
 # accepte en entrée une liste de tableau à 2 dimensions
 # @( @{ "ip" = "x.x.x.x" ; "date" = "EPOCH" } , @{ "ip" = "x.x.x.x" ; "date" = "EPOCH" } )
-function ban_write ($bans) {
+function ban_write ( $bans ) {
 	$w2b = new-object System.Xml.XmlDocument
-	$w2b.AppendChild($w2b.CreateElement("wail2ban"))
+	$w2b.AppendChild( $w2b.CreateElement( "wail2ban" ) )
 
-	foreach ($b in $bans) {
-		$ip = $w2b.CreateAttribute("ip")
+	foreach ( $b in $bans ) {
+		$ip = $w2b.CreateAttribute( "ip" )
 		$ip.Value = $b.ip
 
-		$date = $w2b.CreateAttribute("date")
+		$date = $w2b.CreateAttribute( "date" )
 		$date.Value = $b.date
 
-		$ban = $w2b.CreateElement("ban")
-		$ban.Attributes.Append($ip)
-		$ban.Attributes.Append($date)
+		$ban = $w2b.CreateElement( "ban" )
+		$ban.Attributes.Append( $ip )
+		$ban.Attributes.Append( $date )
 
-		$w2b.LastChild.AppendChild($ban)
+		$w2b.LastChild.AppendChild( $ban )
 	}
 
-	$w2b.Save($BannedIPLog)
+	$w2b.Save( $BannedIPLog )
 }
 
 
-# lecture log
-
-
-
-#################################################################################################
-#################################################################################################
-
-#Get the current list of wail2ban bans
-#:! tranformer en cmdlet PS
-function get_jail_list {
-	$fw = New-Object -ComObject hnetcfg.fwpolicy2
-	return $fw.rules | Where-Object { $_.name -match $FirewallRule } | Select name, description
-}
-
-
-# Confirm if rule exists.
-#:! tranformer en cmdlet PS
-#:! retourner true/false
-function rule_exists ($IP) {
-	switch($BLOCK_TYPE) {
-		"NETSH" { $Rule = "netsh advfirewall firewall show rule name=`"$FirewallRule $IP`""}
-		default { error "Don't have a known Block Type. $BLOCK_TYPE" }
-	}
-	if ($rule) { 
-		$result = invoke-expression $rule
-		if ($result -match "----------") {
-			return "Yes"
-		}  else { 
-			return "No"
-		}
-	}
-}
-
-
-#Convert subnet Slash (e.g. 26, for /26) to netmask (e.g. 255.255.255.192)
-#:! récupérer mon netmask
+# Convert subnet Slash (e.g. 26, for /26) to netmask (e.g. 255.255.255.192)
 function netmask($MaskLength) {
 	$IPAddress =  [UInt32]([Convert]::ToUInt32($(("1" * $MaskLength).PadRight(32, "0")), 2))
-	$DottedIP = $( For ($i = 3; $i -gt -1; $i--) {
+	$DottedIP = $( For ($i = 3; $i -ge 0; $i--) {
 		$Remainder = $IPAddress % [Math]::Pow(256, $i)
 		($IPAddress - $Remainder) / [Math]::Pow(256, $i)
 		$IPAddress = $Remainder
@@ -249,21 +230,30 @@ function netmask($MaskLength) {
 }
 
 
-#check if IP is whitelisted
+# lecture log
+function detect {
+}
+
+
+#################################################################################################
+#################################################################################################
+
+
+# check if IP is whitelisted
 #:! retourner true/false
 #:! renommer is_whitelisted
-function whitelisted ($IP) {
-	foreach ($white in $Whitelist) {
-		if ($IP -eq $white) {
+function is_whitelisted ( $IP ) {
+	foreach ( $item in $WhiteList ) {
+		if ( $IP -eq $item ) {
 			$Whitelisted = "Uniquely listed."
 			break
 		}
-		if ($white.contains("/")) {
-			$Mask =  netmask($white.Split("/")[1])
-			$subnet = $white.Split("/")[0]
+		if ($item.contains("/")) {
+			$Mask =  netmask($item.Split("/")[1])
+			$subnet = $item.Split("/")[0]
 			if ((([net.ipaddress]$IP).Address -Band ([net.ipaddress]$Mask).Address ) -eq`
 			(([net.ipaddress]$subnet).Address -Band ([net.ipaddress]$Mask).Address )) {
-				$Whitelisted = "Contained in subnet $white"
+				$Whitelisted = "Contained in subnet $item"
 				break
 			}
 		}
@@ -271,42 +261,6 @@ function whitelisted ($IP) {
 	return $Whitelisted
 }
 
-
-#Read in the saved file of settings. Only called on script start, such as after reboot
-function pickupBanDuration {
-	if (Test-Path $BannedIPLog) {
-		get-content $BannedIPLog | %{
-			if (!$BannedIPs.ContainsKey($_.split(" ")[0])) {
-				$BannedIPs.Add($_.split(" ")[0],$_.split(" ")[1])
-			}
-		}
-		debug "$BannedIPLog ban counts loaded"
-	} else {
-		debug "No IPs to collect from BannedIPLog"
-	}
-}
-
-
-#Get the ban time for an IP, in seconds
-function getBanDuration ($IP) {
-	if ( $BannedIPs.ContainsKey($IP) ) {
-		[int]$Setting = $BannedIPs.Get_Item($IP)
-	} else {
-		$Setting = 0
-		$BannedIPs.Add($IP,$Setting)
-	}
-	$Setting++
-	$BannedIPs.Set_Item($IP,$Setting)
-	$BanDuration =  [math]::min([math]::pow(5,$Setting)*60, $MAX_BANDURATION)
-	debug "IP $IP has the new setting of $setting, being $BanDuration seconds"
-	if (Test-Path $BannedIPLog) {
-		clear-content $BannedIPLog
-	} else {
-		New-Item $BannedIPLog -type file
-	}
-	$BannedIPs.keys | %{ "$_ "+$BannedIPs.Get_Item($_) | Out-File $BannedIPLog -Append }
-	return $BanDuration
-}
 
 
 # Ban the IP (with checking)
@@ -334,48 +288,6 @@ function jail_release ($IP) {
 		debug "$IP firewall listing doesn't exist. Can't remove it."
 	} else {
 		firewall_remove $IP
-	}
-}
-
-
-# Add the Firewall Rule
-function firewall_add ($IP, $ExpireDate) {
-	$Expire = (get-date $ExpireDate -format u).replace("Z","")
-	switch($BLOCK_TYPE) {
-		"NETSH" { $Rule = "netsh advfirewall firewall add rule name=`"$FirewallRule $IP`" dir=in protocol=any action=block remoteip=$IP description=`"Expire: $Expire`"" }
-		default { error "Don't have a known Block Type. $BLOCK_TYPE" }
-	}
-	if ($rule) {
-		$result = invoke-expression $rule
-		if ($LASTEXITCODE -eq 0) {
-			$BanMsg = "Action Successful: Firewall rule added for $IP, expiring on $ExpireDate"
-			actioned "$BanMsg"
-			event "$BanMsg" ADD OK
-		} else {
-			$Message = "Action Failure: could not add firewall rule for $IP,  error: `"$result`". Return code: $LASTEXITCODE"
-			error $Message 
-			event $Message ADD FAIL
-		}
-	}
-}
-
-
-# Remore the Filewall Rule
-function firewall_remove ($IP) {
-	switch($BLOCK_TYPE) {
-		"NETSH" { $Rule = "netsh advfirewall firewall delete rule name=`"$FirewallRule $IP`""}
-		default { error "Don't have a known Block Type. $BLOCK_TYPE" }
-	}
-	if ($rule) {
-		$result = invoke-expression $rule
-		if ($LASTEXITCODE -eq 0) {
-			actioned "Action Successful: Firewall ban for $IP removed"
-			event "Removed IP $IP from firewall rules"  REMOVE OK
-		} else {
-			$Message = "Action Failure: could not remove firewall rule for $IP,  error: `"$result`". Return code: $LASTEXITCODE"
-			error $Message
-			event $Message REMOVE FAIL
-		}
 	}
 }
 
@@ -505,7 +417,7 @@ if ($args -match "-unban") {
 	$IP = $args[ [array]::indexOf($args,"-unban")+1]
 	actioned "Unban IP invoked: going to unban $IP and remove from the log."
 	jail_release $IP
-	(gc $BannedIPLog) | ? {$_ -notmatch $IP } | sc $BannedIPLog # remove IP from ban log
+	( gc $BannedIPLog ) | ? { $_ -notmatch $IP } | sc $BannedIPLog # remove IP from ban log
 	exit
 }
 
@@ -569,4 +481,5 @@ do {
 	Remove-event  -sourceidentifier $SinkName
 
 } while ($true)
+
 
