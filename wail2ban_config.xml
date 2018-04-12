@@ -4,7 +4,6 @@
 		<check_count>3</check_count>
 		<max_banduration>7776000</max_banduration>
 		<log>Application</log>
-		<ruleprefix>wail2ban block:</ruleprefix>
 	</conf>
 	<events>
 		<System/>
