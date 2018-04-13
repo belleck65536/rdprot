@@ -1,19 +1,19 @@
-﻿################################################################################
+################################################################################
 #
 #
-# no_args     : analyse des logs et bannissement des anomalies
-# -unban <ip> : révoquer un bannissement (all = tout vider)
 # -uninstall  : supprimer tâche planifiée et règle de pare-feu ?
 # -...
 #
-# sur évènement/tache planhifiée :
-# argument = -detect
-# sur la période définie,
-# comptabiliser par IP le nombre de tentative
-# en cas de dépassement -->
-# vérif si IP whitelistée, si non exemptée --> procédure de ban
-#    ajout au banlog (IP + date de ban)
-#    modification de la règle (ajout de l'IP)
+# quand le script est exécuté sans argument, on tente une détection
+# si déclenchement positif, traitement de bannissement :
+# 	màj parefeu (expiration implicite)
+# 	communication
+#
+# -unban <ip> : révoquer un bannissement (all = tout vider)
+# -expire     : mise à jour parefeu sans analyse (redondance ? en fait si je
+#               lance une détection alors que les logs sont clean, il n'y aura
+#               pas d'impact sur la liste des bans, seul le temps de traitement
+#               sera impacté
 #
 ################################################################################
 #
@@ -170,9 +170,7 @@ function fw_rule_create {
 # accepte un tableau mono-dimension
 #:! s'assurer que $ip n'est pas nul sinon ne pas traiter la mise à jour
 function fw_rule_update ( $ip ) {
-	if ( ! $( fw_rule_exists ) ) {
-		fw_rule_create
-	}
+	fw_rule_create
 	Get-NetFirewallRule -DisplayName $FirewallRule | Get-NetFirewallAddressFilter | Set-NetFirewallAddressFilter -RemoteAddress $ip
 }
 
@@ -186,8 +184,10 @@ function fw_rule_remove {
 # obtenir liste des ban
 function ban_read {
 	if ( test-path $BannedIPLog ) {
+		$r = @{}
 		[xml]$ip = get-content $BannedIPLog
-		return $ip.wail2ban.ban
+		$ip.wail2ban.ban | % { $r += @{ "ip" = $_.ip ; "date" = $_.date } }
+		return $r
 	}
 }
 
@@ -218,7 +218,7 @@ function ban_write ( $bans ) {
 
 
 # Convert subnet Slash (e.g. 26, for /26) to netmask (e.g. 255.255.255.192)
-function netmask($MaskLength) {
+function netmask ( $MaskLength ) {
 	$IPAddress =  [UInt32]([Convert]::ToUInt32($(("1" * $MaskLength).PadRight(32, "0")), 2))
 	$DottedIP = $( For ($i = 3; $i -ge 0; $i--) {
 		$Remainder = $IPAddress % [Math]::Pow(256, $i)
@@ -230,59 +230,80 @@ function netmask($MaskLength) {
 }
 
 
-# lecture log
-function detect {
+# conversion datetime en EPOCH
+function epoch ( $datetime ) {
+	return [int][double]::Parse((Get-Date -date $datetime -UFormat %s))
 }
-
-
-#################################################################################################
-#################################################################################################
 
 
 # check if IP is whitelisted
-#:! retourner true/false
-#:! renommer is_whitelisted
-function is_whitelisted ( $IP ) {
+function is_whitelisted ( $ip ) {
 	foreach ( $item in $WhiteList ) {
-		if ( $IP -eq $item ) {
-			$Whitelisted = "Uniquely listed."
-			break
-		}
-		if ($item.contains("/")) {
-			$Mask =  netmask($item.Split("/")[1])
-			$subnet = $item.Split("/")[0]
-			if ((([net.ipaddress]$IP).Address -Band ([net.ipaddress]$Mask).Address ) -eq`
-			(([net.ipaddress]$subnet).Address -Band ([net.ipaddress]$Mask).Address )) {
-				$Whitelisted = "Contained in subnet $item"
+		switch ( $true ) {
+			"$( $ip -eq $item )" {
+				return $true
 				break
+			}
+			"$( $item.contains("/") )" {
+				$subnet	= $item.Split("/")[0]
+				$Mask	= netmask($item.Split("/")[1])
+				if ((([net.ipaddress]$ip).Address -Band ([net.ipaddress]$Mask).Address ) -eq`
+				(([net.ipaddress]$subnet).Address -Band ([net.ipaddress]$Mask).Address )) {
+					return $true
+					break
+				}
 			}
 		}
 	}
-	return $Whitelisted
+	return $false
 }
 
 
+# obtention des ip des bans encore en vigueur
+# @( @{ "ip" = "x.x.x.x" ; "date" = "EPOCH" } , @{ "ip" = "x.x.x.x" ; "date" = "EPOCH" } )
+function ip_of_not_expired_bans ( $bans ) {
+	$ips = @()
+	$now = epoch ( get-date )
+	foreach ( $ban in $bans ) {
+		if ( $( [int]$Max_BanDuration + $ban.date ) -ge $now ) {
+			$ips += $ban.ip
+		}
+	}
+	return $ips
+}
+
 
 # Ban the IP (with checking)
-function jail_lockup ($IP, $ExpireDate) {
-	$result = whitelisted($IP)
-	if ($result) {
-		warning "$IP is whitelisted, except from banning. Why? $result "
+# ip en entrée
+# lecture bans, ajout ban, écriture bans, màj parefeu, logfile, logwin, mail
+#:!
+function ban ( $ip ) {
+	if ( is_whitelisted ( $ip ) ) {
+		warning "L'ip protégée $ip a déclenché un bannissement"
 	} else {
-		if (!$ExpireDate) {
-			$BanDuration = getBanDuration($IP)
-			$ExpireDate = (Get-Date).AddSeconds($BanDuration)
-		}
-		if ((rule_exists $IP) -eq "Yes") {
-			warning ("IP $IP already blocked.")
-		} else {
-			firewall_add $IP $ExpireDate
-		}
+		$b = ban_read
+		$b += @{ "ip" = $ip ; "date" = $( epoch ( get-date ) ) } # EPOCH
+		ban_write ( $b )
+		fw_rule_update ( ip_of_not_expired_bans ( $b ) )
+		actioned "$ip vient de se faire bannir"
+		# log win
+		# mail
 	}
 }
 
 
+# lecture log
+function detect {
+	#
+}
+
+
+################################################################################
+################################################################################
+
+
 # Unban the IP (with checking)
+# 
 function jail_release ($IP) { 
 	if ((rule_exists $IP) -eq "No") {
 		debug "$IP firewall listing doesn't exist. Can't remove it."
@@ -423,7 +444,7 @@ if ($args -match "-unban") {
 
 
 #Display Help Message
-if ($args -match "-help") {
+if ( $args -match "-help" ) {
 	help
 	exit 0
 }
