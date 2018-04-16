@@ -293,6 +293,16 @@ function ban ( $ip ) {
 
 
 # lecture log
+# pour chaque catégorie d'event :
+#	créer hashtable de regroupement
+#	requêter adns une variable les évènements selon les critères :
+#		log = celui de l'entry
+#		ID = celui de l'entry
+#		durée de look before = celle de la conf
+#	pour chaque ligne de l'extract des logs windows :
+#		tester existence de $hashtable.$IP --> créer si besoin avec [int]$hashtable.$IP = 0
+#		incrémenter $hashtable.$IP
+#	sélectionner toutes les $hashtable.$IP >= 
 function detect {
 	#
 }
@@ -443,7 +453,7 @@ if ($args -match "-unban") {
 }
 
 
-#Display Help Message
+# Display Help Message
 if ( $args -match "-help" ) {
 	help
 	exit 0
