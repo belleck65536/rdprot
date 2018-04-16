@@ -24,7 +24,6 @@ $DebugPreference = "continue"
 ################################################################################
 #  Files
 #
-#:! revoir dossier du script et nom du script
 $wail2banInstall = "" + ( Get-Location ) + "\"
 $wail2banScript  = $wail2banInstall+$MyInvocation.MyCommand.Name
 $ConfigFile      = $wail2banInstall+"wail2ban_config.xml"
@@ -61,6 +60,11 @@ $EventTypes = @(
 )
 
 
+#:! filtrage et log
+$Categories = $Categories | ? {  }
+
+
+# obtention adresses locales
 $WhiteList += $( Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred ).IPAddress
 
 
@@ -72,7 +76,7 @@ New-Variable -Name RegexIP -Force -Value ([regex]'(?<First>2[0-4]\d|25[0-5]|[01]
 $BannedIPs = @{}
 
 
-# Incoming event structure
+#:! Incoming event structure
 $CheckEvents = New-object system.data.datatable( "CheckEvents" )
 $null = $CheckEvents.columns.add( "EventLog" )
 $null = $CheckEvents.columns.add( "EventID" )
@@ -275,7 +279,6 @@ function ip_of_not_expired_bans ( $bans ) {
 
 
 # Ban the IP (with checking)
-# ip en entrée
 # lecture bans, ajout ban, écriture bans, màj parefeu, logfile, logwin, mail
 #:!
 function ban ( $ip ) {
@@ -297,6 +300,7 @@ function ban ( $ip ) {
 #:! recup des logs
 function detect {
 	foreach ( $categorie in $Categories ) {
+	
 		$regroup = @{}
 		# --> voir Get-WinEventData
 		$Tries = Get-EventLog -LogName $Categorie.source -InstanceId $Categorie.id | ? { $_.date -ge ( epoch (get-date) - $Check_Window ) }
@@ -313,35 +317,6 @@ function detect {
 
 ################################################################################
 ################################################################################
-
-
-# Unban the IP (with checking)
-# 
-function jail_release ($IP) { 
-	if ((rule_exists $IP) -eq "No") {
-		debug "$IP firewall listing doesn't exist. Can't remove it."
-	} else {
-		firewall_remove $IP
-	}
-}
-
-
-#Remove any expired bans
-function unban_old_records {
-	$jail = get_jail_list
-	if ($jail) {
-		foreach ($inmate in $jail) {
-			$IP = $inmate.Name.substring($FirewallRule.length+1)
-			$ReleaseDate = $inmate.Description.substring("Expire: ".Length)
-
-			if ($([int]([datetime]$ReleaseDate- (Get-Date)).TotalSeconds) -lt 0) { 
-				debug "Unban old records: $IP looks old enough $(get-date $ReleaseDate -format G)"
-				jail_release $IP
-			}
-		}
-	}
-}
-
 
 #Convert the TimeGenerated time into Epoch
 function WMIDateStringToDateTime ([String] $iSt) {
@@ -364,29 +339,10 @@ function WMIDateStringToDateTime ([String] $iSt) {
 }
 
 
-# Remove recorded access attempts, by IP, or expired records if no IP provided.
-function clear_attempts ($IP = 0) {
-	$Removes = @()
-	foreach ($a in $Entry.GetEnumerator()) {
-		if ($IP -eq 0) {
-			if ([int]$a.Value[1]+$CHECK_WINDOW -lt (get-date ((get-date).ToUniversalTime()) -UFormat "%s").replace(",",".")) {
-				$Removes += $a.Key
-			}
-		} else {
-			foreach ($a in $Entry.GetEnumerator()) {
-				if ($a.Value[0] -eq $IP) {
-					$Removes += $a.Key
-				}
-			}
-		}
-	}
-	foreach ($b in $Removes) { $Entry.Remove($b) }
-}
-
-
 ################################################################################
 #Process input parameters
 if ($setting) { debug "wail2ban started. $setting" }
+
 
 #Display current configuration.
 if ($args -match "-config") {
@@ -428,26 +384,8 @@ if ($args -match "-jailbreak") {
 }
 
 
-# Show the inmates in the jail.
-if ($args -match "-jail") {
-	$inmates = get_jail_list
-	if ($inmates) {
-		"wail2ban currently banned listings: `n"
-		foreach ($a in $inmates) {
-			$IP = $a.name.substring($FirewallRulePrefix.length+1)
-			$Expire = $a.description.substring("Expire: ".length)
-			""+$IP.PadLeft(14)+" expires at $Expire"
-		}
-		"`nThis is a listing of the current Windows Firewall with Advanced Security rules, starting with `""+$FirewallRulePrefix+" *`""
-	} else {
-		"There are no currrently banned IPs"
-	}
-	exit
-}
-
-
 #Unban specific IP. Remove associated schtask, if exists.
-if ($args -match "-unban") {
+if ( $args -match "-unban" ) {
 	$IP = $args[ [array]::indexOf($args,"-unban")+1]
 	actioned "Unban IP invoked: going to unban $IP and remove from the log."
 	jail_release $IP
@@ -461,6 +399,7 @@ if ( $args -match "-help" ) {
 	help
 	exit 0
 }
+
 
 ################################################################################
 #Setup for the loop
