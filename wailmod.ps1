@@ -46,6 +46,7 @@ $Check_Window		= $cfg.wail2ban.conf.check_window
 $Check_Count		= $cfg.wail2ban.conf.check_count
 $Max_BanDuration	= $cfg.wail2ban.conf.max_banduration
 $RecordEventLog		= $cfg.wail2ban.conf.log
+$Categories			= $cfg.wail2ban.events.entry
 $WhiteList			= $cfg.wail2ban.whitelist.ip
 
 if ( $Check_Window		-lt 0 ) { exit 2 }
@@ -293,16 +294,17 @@ function ban ( $ip ) {
 
 
 # lecture log
-# pour chaque catégorie d'event :
-#	créer hashtable de regroupement
-#	requêter adns une variable les évènements selon les critères :
-#		log = celui de l'entry
-#		ID = celui de l'entry
-#		durée de look before = celle de la conf
-#	pour chaque ligne de l'extract des logs windows :
+# pour chaque $Categories :
+#	créer $hashtable de regroupement
+#	requêter dans $Tries les évènements selon les critères :
+#		log = $Categorie.source
+#		ID = $Categorie.id
+#		durée de look before <= epoch (get-date) - $Check_Window
+#	pour chaque ligne de $Tries :
 #		tester existence de $hashtable.$IP --> créer si besoin avec [int]$hashtable.$IP = 0
 #		incrémenter $hashtable.$IP
-#	sélectionner toutes les $hashtable.$IP >= 
+#	pour toutes les lignes de $hashtable :
+#		si $_ >= celle de la conf et si $IP n'est pas liste blanche --> ban!
 function detect {
 	#
 }
