@@ -6,14 +6,9 @@
 		<log>Application</log>
 	</conf>
 	<events>
-		<System/>
-		<Security>
-			<entry id="4625" desc="RDP Logins failures" />
-			<entry id="94627" desc="Dummy failure" />
-		</Security>
-		<Application>
-			<entry id="18456" desc="MSSQL Logins failures" />
-		</Application>
+		<entry source="Security" id="4625" desc="RDP Logins failures" />
+		<entry source="Security" id="94627" desc="Dummy failure" />
+		<entry source="Application" id="18456" desc="MSSQL Logins failures" />
 	</events>
 	<whitelist>
 		<ip>127.0.0.1</ip>
