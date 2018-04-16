@@ -294,19 +294,20 @@ function ban ( $ip ) {
 
 
 # lecture log
-# pour chaque $Categories :
-#	créer $hashtable de regroupement
-#	requêter dans $Tries les évènements selon les critères :
-#		log = $Categorie.source
-#		ID = $Categorie.id
-#		durée de look before <= epoch (get-date) - $Check_Window
-#	pour chaque ligne de $Tries :
-#		tester existence de $hashtable.$IP --> créer si besoin avec [int]$hashtable.$IP = 0
-#		incrémenter $hashtable.$IP
-#	pour toutes les lignes de $hashtable :
-#		si $_ >= celle de la conf et si $IP n'est pas liste blanche --> ban!
+#:! recup des logs
 function detect {
-	#
+	foreach ( $categorie in $Categories ) {
+		$regroup = @{}
+		# --> voir Get-WinEventData
+		$Tries = Get-EventLog -LogName $Categorie.source -InstanceId $Categorie.id | ? { $_.date -ge ( epoch (get-date) - $Check_Window ) }
+		foreach ( $trie in $Tries ) {
+			if ( ! $regroup.contains( $trie.ip ) ) {
+				[int]$regroup.( $trie.ip ) = 1
+			} else {
+				$regroup.( $trie.ip ) ++
+			}
+		}
+		$regroup.Keys | ? { $regroup.$_ -gt $Check_Count } | % { ban ( $regroup.$_ ) }
 }
 
 
