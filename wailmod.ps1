@@ -2,18 +2,13 @@
 #
 #
 # -uninstall  : supprimer tâche planifiée et règle de pare-feu ?
-# -...
+# -install : création tâches planifiées d'évènement + expiration (interval ?)
 #
 # quand le script est exécuté sans argument, on tente une détection
 # si déclenchement positif, traitement de bannissement :
-# 	màj parefeu (expiration implicite)
-# 	communication
+# 	màj parefeu (expiration implicite) + communication
 #
 # -unban <ip> : révoquer un bannissement (all = tout vider)
-# -expire     : mise à jour parefeu sans analyse (redondance ? en fait si je
-#               lance une détection alors que les logs sont clean, il n'y aura
-#               pas d'impact sur la liste des bans, seul le temps de traitement
-#               sera impacté
 #
 ################################################################################
 #
