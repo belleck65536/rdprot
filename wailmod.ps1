@@ -9,7 +9,15 @@
 #	-reg        : création tâches planifiées d'évènement + expiration (interval ?)
 #
 ################################################################################
+#  init
 #
+param(
+    [switch]$reg,
+	[switch]$help,
+    [switch]$unreg,
+    [string]$unban
+)
+
 $DebugPreference = "continue"
 
 
@@ -121,80 +129,6 @@ function debug		( $text ) { log "D" $text }
 function actioned	( $text ) { log "A" $text }
 
 
-# vérification présence règle
-function fw_rule_exists {
-	return $( Get-NetFirewallRule -DisplayName $FirewallRule -ErrorAction SilentlyContinue )
-}
-
-
-# création règle pare feu
-function fw_rule_create {
-	if ( ! $( fw_rule_exists ) ) {
-		New-NetFirewallRule -DisplayName $FirewallRule -Enabled False -Direction Inbound -Action Block
-	}
-}
-
-
-# mise à jour règle pare-feu avec toutes les IP à bloquer (en array)
-#:! si $ip est nul --> remove fw_rule sinon create+update
-function fw_rule_update ( $ip ) {
-	if ( $ip.Count -ge 1 ) {
-		fw_rule_create
-		Get-NetFirewallRule -DisplayName $FirewallRule | Get-NetFirewallAddressFilter | Set-NetFirewallAddressFilter -RemoteAddress $ip
-	} else {
-		fw_rule_remove
-	}
-}
-
-
-# suppression règle pare-feu
-function fw_rule_remove {
-	Remove-NetFirewallRule -DisplayName $FirewallRule -ErrorAction SilentlyContinue
-}
-
-
-# obtenir liste des ban
-function ban_read {
-	if ( test-path $BannedIPLog ) {
-		$r = @{}
-		[xml]$ip = get-content $BannedIPLog
-		$ip.wail2ban.ban | % { $r += @{ "ip" = $_.ip ; "date" = $_.date ; "release" = $_.release } }
-		return $r
-	}
-}
-
-
-# enregistrer liste des ban
-# accepte en entrée : @(
-#							@{ "ip" = "x.x.x.x" ; "date" = "EPOCH" ; "release" = EPOCH } ,
-#							@{ "ip" = "x.x.x.x" ; "date" = "EPOCH" ; "release" = EPOCH }
-#						)
-function ban_write ( $bans ) {
-	$w2b = new-object System.Xml.XmlDocument
-	$w2b.AppendChild( $w2b.CreateElement( "wail2ban" ) )
-
-	foreach ( $b in $bans ) {
-		$ip = $w2b.CreateAttribute( "ip" )
-		$ip.Value = $b.ip
-
-		$date = $w2b.CreateAttribute( "date" )
-		$date.Value = $b.date
-
-		$release = $w2b.CreateAttribute( "release" )
-		$release.Value = $b.release
-
-		$ban = $w2b.CreateElement( "ban" )
-		$ban.Attributes.Append( $ip )
-		$ban.Attributes.Append( $date )
-		$ban.Attributes.Append( $release )
-
-		$w2b.LastChild.AppendChild( $ban )
-	}
-
-	$w2b.Save( $BannedIPLog )
-}
-
-
 # Convert subnet Slash (e.g. 26, for /26) to netmask (e.g. 255.255.255.192)
 function netmask ( $MaskLength ) {
 	$IPAddress =  [UInt32]([Convert]::ToUInt32($(("1" * $MaskLength).PadRight(32, "0")), 2))
@@ -258,6 +192,97 @@ function ip_of_not_expired_bans ( $bans ) {
 }
 
 
+# vérification présence règle
+function fw_rule_exists {
+	return $( Get-NetFirewallRule -DisplayName $FirewallRule -ErrorAction SilentlyContinue )
+}
+
+
+# création règle pare feu
+function fw_rule_create {
+	if ( ! $( fw_rule_exists ) ) {
+		New-NetFirewallRule -DisplayName $FirewallRule -Enabled False -Direction Inbound -Action Block
+	}
+}
+
+
+# mise à jour règle pare-feu avec toutes les IP à bloquer (en array)
+function fw_rule_update ( $ip ) {
+	if ( $ip.Count -ge 1 ) {
+		fw_rule_create
+		Get-NetFirewallRule -DisplayName $FirewallRule | Get-NetFirewallAddressFilter | Set-NetFirewallAddressFilter -RemoteAddress $ip
+	} else {
+		fw_rule_remove
+	}
+}
+
+
+# suppression règle pare-feu
+function fw_rule_remove {
+	Remove-NetFirewallRule -DisplayName $FirewallRule -ErrorAction SilentlyContinue
+}
+
+
+#:! recherche d'une tâche planifiée
+function schtask_create ( $type, $data ) {
+	
+}
+
+
+#:! ajout d'une tâche planifiée
+function schtask_create ( $type, $data ) {
+	
+}
+
+
+#:! suppression d'une tâche planifiée
+function schtask_remove () {
+	
+}
+
+
+# obtenir liste des ban
+function ban_read {
+	if ( test-path $BannedIPLog ) {
+		$r = @{}
+		[xml]$ip = get-content $BannedIPLog
+		$ip.wail2ban.ban | % { $r += @{ "ip" = $_.ip ; "date" = $_.date ; "release" = $_.release } }
+		return $r
+	}
+}
+
+
+# enregistrer liste des ban
+# accepte en entrée : @(
+#							@{ "ip" = "x.x.x.x" ; "date" = "EPOCH" ; "release" = EPOCH } ,
+#							@{ "ip" = "x.x.x.x" ; "date" = "EPOCH" ; "release" = EPOCH }
+#						)
+function ban_write ( $bans ) {
+	$w2b = new-object System.Xml.XmlDocument
+	$w2b.AppendChild( $w2b.CreateElement( "wail2ban" ) )
+
+	foreach ( $b in $bans ) {
+		$ip = $w2b.CreateAttribute( "ip" )
+		$ip.Value = $b.ip
+
+		$date = $w2b.CreateAttribute( "date" )
+		$date.Value = $b.date
+
+		$release = $w2b.CreateAttribute( "release" )
+		$release.Value = $b.release
+
+		$ban = $w2b.CreateElement( "ban" )
+		$ban.Attributes.Append( $ip )
+		$ban.Attributes.Append( $date )
+		$ban.Attributes.Append( $release )
+
+		$w2b.LastChild.AppendChild( $ban )
+	}
+
+	$w2b.Save( $BannedIPLog )
+}
+
+
 # Ban the IP (with checking)
 # lecture bans, ajout ban, écriture bans, màj parefeu, logfile, logwin, mail
 #:!
@@ -300,60 +325,40 @@ function detect {
 }
 
 
-#:! ajout d'une tâche planifiée
-function schtask_create () {
-	
-}
-
-
-#:! suppression d'une tâche planifiée
-function schtask_remove () {
-	
-}
-
-
 ################################################################################
 ################################################################################
 #	-unban <ip> : révoquer un bannissement (all = tout vider)
 #	-unreg      : supprimer tâches planifiées et règle de pare-feu (id = nom)
 #	-reg        : création tâches planifiées d'évènement + expiration (interval ?)
-
-# Release all current banned IPs
-if ($args -match "-jailbreak") {
-	actioned "Jailbreak initiated by console. Removing ALL IPs currently banned"
-	$EnrichmentCentre = get_jail_list
-	if ($EnrichmentCentre) {
-		"`nAre you trying to escape? [chuckle]"
-		"Things have changed since the last time you left the building."
-		"What's going on out there will make you wish you were back in here."
-		" "
-		foreach ($subject in $EnrichmentCentre) {
-			$IP = $subject.name.substring($FirewallRulePrefix.length+1)
-			firewall_remove $IP
-		}
-		clear-content $BannedIPLog
-	} else {
-		"`nYou can't escape, you know. `n`n(No current firewall listings to remove.)"
-	}
-	exit
-}
-
-
-#Unban specific IP. Remove associated schtask, if exists.
-if ( $args -match "-unban" ) {
-	$IP = $args[ [array]::indexOf($args,"-unban")+1]
-	actioned "Unban IP invoked: going to unban $IP and expire from the log."
-	jail_release $IP
-	( gc $BannedIPLog ) | ? { $_ -notmatch $IP } | sc $BannedIPLog # remove IP from ban log
-	exit 0
-}
+#   -help
 
 
 # Display Help Message
-if ( $args -match "-help" ) {
+if ( $help.IsPresent ) {
 	help
 	exit 0
 }
 
-detect
 
+#:!
+if ( $reg.IsPresent ) {
+	actioned "Intégration de $FirewallRule"
+	# vérif existence tâche expiration
+	# --> création tâche expiration
+	# analyse config
+	# recherche des tâches d'interception
+	# --> si une tâche a sa ligne de config -> suppression ligne de config
+	# --> si une tâche N'a PAS sa ligne de config -> suppression tâche
+	# ajout des tâches restantes dans la config
+	exit 0
+}
+
+
+#:!
+if ( $unreg.IsPresent ) {
+	# supprimer tâche d'expiration
+	# supprimer tâches d'interception
+}
+
+
+detect
