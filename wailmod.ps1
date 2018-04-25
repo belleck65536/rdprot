@@ -53,11 +53,6 @@ if ( $Check_Count		-lt 0 ) { exit 2 }
 if ( $Max_BanDuration	-lt 0 ) { exit 2 }
 
 $FirewallRule = "Wail2Ban"
-$EventTypes = @(
-	 "Application"
-	,"Security"
-	,"System"
-)
 
 
 # obtention adresses locales
@@ -66,10 +61,6 @@ $WhiteList += $( Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred ).
 
 # regex IPv4
 New-Variable -Name RegexIP -Force -Value ([regex]'(?<First>2[0-4]\d|25[0-5]|[01]?\d\d?)\.(?<Second>2[0-4]\d|25[0-5]|[01]?\d\d?)\.(?<Third>2[0-4]\d|25[0-5]|[01]?\d\d?)\.(?<Fourth>2[0-4]\d|25[0-5]|[01]?\d\d?)')
-
-
-#:! filtrage et log (pas propre avec le -match)
-$Categories = $Categories | ? { $EventTypes -match $_.source }
 
 
 ################################################################################
@@ -82,22 +73,6 @@ function help {
 }
 
 
-#:! journalisation vers Windows
-function event ( $text, $task, $result ) {
-	$event = new-object System.Diagnostics.EventLog( $RecordEventLog )
-	$event.Source = $FirewallRule
-	switch ( $task ) {
-		"ADD"    { $logeventID = 1000 }
-		"REMOVE" { $logeventID = 2000 }
-	}
-	switch ( $result ) {
-		"FAIL"   { $eventtype = [System.Diagnostics.EventLogEntryType]::Error; $logeventID += 1 }
-		default  { $eventtype = [System.Diagnostics.EventLogEntryType]::Information}
-	}
-	$event.WriteEntry( $text, $eventType, $logeventID )
-}
-
-
 #:! Log things to file and debug
 function log ( $type, $text ) {
 	$output = "" + ( get-date -format u ).replace( "Z", "" ) + " $text"
@@ -105,6 +80,10 @@ function log ( $type, $text ) {
 	switch ( $type ) {
 		"D" {
             write-debug $output
+        }
+		"A" {
+            write-debug $output
+            $output | out-file $logfile -append
         }
 		"W" {
             write-warning "WARNING: $output"
@@ -114,19 +93,15 @@ function log ( $type, $text ) {
             write-error "ERROR: $output"
             $output | out-file $logfile -append
         }
-		"A" {
-            write-debug $output
-            $output | out-file $logfile -append
-        }
 	}
 }
 
 
 #Log type functions
-function error		( $text ) { log "E" $text }
-function warning	( $text ) { log "W" $text }
 function debug		( $text ) { log "D" $text }
 function actioned	( $text ) { log "A" $text }
+function warning	( $text ) { log "W" $text }
+function error		( $text ) { log "E" $text }
 
 
 # Convert subnet Slash (e.g. 26, for /26) to netmask (e.g. 255.255.255.192)
@@ -142,14 +117,13 @@ function netmask ( $MaskLength ) {
 }
 
 
-# conversion datetime en EPOCH
+# datetime --> EPOCH
 function epoch ( $datetime ) {
 	return [int][double]::Parse((Get-Date -date $datetime -UFormat %s))
 }
 
 
-# conversion EPOCH en datetime
-#:! à vérifier
+# EPOCH --> datetime
 function datetime ( $epoch ) {
     return $( Get-Date -Date "1970/01/01" ).AddSeconds( $epoch )
 }
@@ -298,7 +272,6 @@ function ban ( $ip ) {
 		ban_write ( $b )
 		fw_rule_update ( ip_of_not_expired_bans ( $b ) )
 		actioned "$ip vient de se faire bannir"
-		# log win
 		# mail
 	}
 }
@@ -358,6 +331,7 @@ if ( $reg.IsPresent ) {
 if ( $unreg.IsPresent ) {
 	# supprimer tâche d'expiration
 	# supprimer tâches d'interception
+	exit 0
 }
 
 
