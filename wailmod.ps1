@@ -336,3 +336,22 @@ if ( $unreg.IsPresent ) {
 
 
 detect
+ # https://social.technet.microsoft.com/Forums/windowsserver/en-US/c2e778f6-4f63-4a07-9557-d13220ba808a/schedule-job-i-need-to-add-custom-eventtrigger-using-powershell?forum=winserverpowershell
+
+$A = New-ScheduledTaskAction -Execute "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -Argument "C:\_b\BackScript.ps1"
+
+$P = New-ScheduledTaskPrincipal -RunLevel Highest -UserId "AdmBZ" -LogonType S4U
+
+$cimTriggerClass = Get-CimClass -ClassName MSFT_TaskEventTrigger -Namespace Root/Microsoft/Windows/TaskScheduler:MSFT_TaskEventTrigger 
+$T = New-CimInstance -CimClass $cimTriggerClass -ClientOnly 
+$T.Enabled = $true 
+$T.Subscription = @"
+<QueryList><Query Id="0" Path="Security"><Select Path="Security">*[System[Provider[@Name='Microsoft-Windows-Security-Auditing'] and EventID=4625]]</Select></Query></QueryList>
+"@
+
+$S = New-ScheduledTaskSettingsSet -Compatibility Vista
+
+　
+$D = New-ScheduledTask -Action $A -Principal $P -Trigger $T -Settings $S
+Register-ScheduledTask "Nom tache" -InputObject $D
+ 
