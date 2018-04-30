@@ -198,38 +198,58 @@ function fw_rule_remove {
 
 
 #:! recherche d'une tâche planifiée
-# https://social.technet.microsoft.com/Forums/windowsserver/en-US/c2e778f6-4f63-4a07-9557-d13220ba808a/schedule-job-i-need-to-add-custom-eventtrigger-using-powershell?forum=winserverpowershell
 function schtask_exists {
 	
 }
 
 
 #:! ajout d'une tâche planifiée
-function schtask_create ( $type, $data ) {
-	$img_name = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+# en entrée : $src = @ ( @{ "Path" = "Security" ; "EventID" = "4625" [; "Provider" = "MWSA"] } ,
+#                        @{ "Path" = "Security" ; "EventID" = "4625" [; "Provider" = "MWSA"] } }
+# deux tâches réalisées par cette focntion :
+# - créer la tâche d'expiration
+# - créer la tâche trigger (avec argument expire)
+function schtask_create () {
+	if ( ! $( schtask_exists ) ) {
+		$img_name = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+		$TaskUser = "meuh"
 
-	$A = New-ScheduledTaskAction -Execute $img_name -Argument $wail2banScript
+		$A = New-ScheduledTaskAction -Execute $img_name -Argument $wail2banScript
+		$P = New-ScheduledTaskPrincipal -RunLevel Highest -UserId $TaskUser -LogonType S4U
+		$S = New-ScheduledTaskSettingsSet -Compatibility Vista
+		$T = New-ScheduledTaskTrigger -Daily -At "00:00"
 
-	$P = New-ScheduledTaskPrincipal -RunLevel Highest -UserId "AdmBZ" -LogonType S4U
-
-	$cimTriggerClass = Get-CimClass -ClassName MSFT_TaskEventTrigger -Namespace Root/Microsoft/Windows/TaskScheduler:MSFT_TaskEventTrigger 
-	$T = New-CimInstance -CimClass $cimTriggerClass -ClientOnly 
-	$T.Enabled = $true 
-	$T.Subscription = @"
-	<QueryList><Query Id="0" Path="Security"><Select Path="Security">*[System[Provider[@Name='Microsoft-Windows-Security-Auditing'] and EventID=4625]]</Select></Query></QueryList>
-	"@
-
-	$S = New-ScheduledTaskSettingsSet -Compatibility Vista
+		$Dexp = New-ScheduledTask -Action $A -Principal $P -Settings $S -Trigger = $T
+		
+		$Dtrg = New-ScheduledTask -Action $A -Principal $P -Settings $S
+		
+		Register-ScheduledTask "Dexp" -InputObject $Dexp
+		Register-ScheduledTask "Dtrg" -InputObject $Dtrg
+	}
+}
 
 
-	$D = New-ScheduledTask -Action $A -Principal $P -Trigger $T -Settings $S
-	Register-ScheduledTask "Nom tache" -InputObject $D
+# https://social.technet.microsoft.com/Forums/windowsserver/en-US/c2e778f6-4f63-4a07-9557-d13220ba808a/schedule-job-i-need-to-add-custom-eventtrigger-using-powershell?forum=winserverpowershell
+function schtask_update ( $evts ) {
+	schtask_create
+
+	$Ts = @()
+	foreach ( $evt in $evts ) {
+		$cimTriggerClass = Get-CimClass -ClassName MSFT_TaskEventTrigger -Namespace Root/Microsoft/Windows/TaskScheduler:MSFT_TaskEventTrigger
+		$T = New-CimInstance -CimClass $cimTriggerClass -ClientOnly
+		$T.Enabled = $true
+		$T.Subscription = "<QueryList><Query Id='0' Path='$evt.Path'><Select Path='$evt.Path'>*[System[Provider[@Name='Microsoft-Windows-Security-Auditing'] and EventID=$evt.EventID]]</Select></Query></QueryList>"
+		$Ts +=  $T
+	}
+
+	Set-ScheduledTask -TaskName "Dtrg" -Trigger $Ts
 }
 
 
 #:! suppression d'une tâche planifiée
 function schtask_remove () {
-	
+	Unregister-ScheduledTask -Taskname "Dexp" -ErrorAction SilentlyContinue
+	Unregister-ScheduledTask -Taskname "Dtrg" -ErrorAction SilentlyContinue
 }
 
 
