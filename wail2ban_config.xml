@@ -6,12 +6,13 @@
 		<log>Application</log>
 	</conf>
 	<events>
-		<entry source="Security" id="4625" desc="RDP Logins failures" />
-		<entry source="Security" id="94627" desc="Dummy failure" />
-		<entry source="Application" id="18456" desc="MSSQL Logins failures" />
+		<entry source="Security" id="4625" desc="RDP Logins failures" Provider=""/>
+		<entry source="Security" id="94627" desc="Dummy failure" Provider=""/>
+		<entry source="Application" id="18456" desc="MSSQL Logins failures" Provider=""/>
 	</events>
 	<whitelist>
 		<ip>127.0.0.1</ip>
 		<ip>127.0.0.0/8</ip>
+		<ip>10.0.0.0/8</ip>
 	</whitelist>
 </wail2ban>
