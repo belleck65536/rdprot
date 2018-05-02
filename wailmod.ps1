@@ -7,6 +7,7 @@
 #	-unban <ip> : révoquer un bannissement (all = tout vider)
 #	-unreg      : supprimer tâches planifiées et règle de pare-feu (id = nom)
 #	-reg        : création tâches planifiées d'évènement + expiration (interval ?)
+#	-help		: --
 #
 ################################################################################
 #  init
@@ -20,15 +21,18 @@ param(
 
 $DebugPreference = "continue"
 
+$Prefix = "Wail2Ban"
 
 ################################################################################
 #  Files
 #
+$img_name = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
+
 $wail2banInstall = "" + ( Get-Location ) + "\"
 $wail2banScript  = $wail2banInstall+$MyInvocation.MyCommand.Name
-$ConfigFile      = $wail2banInstall+"wail2ban_config.xml"
-$BannedIPLog     = $wail2banInstall+"wail2ban_ban.xml"
-$logFile         = $wail2banInstall+"wail2ban_log.log"
+$ConfigFile      = $wail2banInstall+"$Prefix_config.xml"
+$BannedIPLog     = $wail2banInstall+"$Prefix_ban.xml"
+$logFile         = $wail2banInstall+"$Prefix_log.log"
 
 
 ################################################################################
@@ -47,12 +51,14 @@ $Max_BanDuration	= $cfg.wail2ban.conf.max_banduration
 $RecordEventLog		= $cfg.wail2ban.conf.log
 $Categories			= $cfg.wail2ban.events.entry
 $WhiteList			= $cfg.wail2ban.whitelist.ip
+$TaskUser			= "meuh" # à placer dans la config / prendre le compte courant ?
+
+$taskname_exp = "$Prefix - Expiration"
+$taskname_tgr = "$Prefix - Trigger"
 
 if ( $Check_Window		-lt 0 ) { exit 2 }
 if ( $Check_Count		-lt 0 ) { exit 2 }
 if ( $Max_BanDuration	-lt 0 ) { exit 2 }
-
-$FirewallRule = "Wail2Ban"
 
 
 # obtention adresses locales
@@ -168,14 +174,14 @@ function ip_of_not_expired_bans ( $bans ) {
 
 # vérification présence règle
 function fw_rule_exists {
-	return $( Get-NetFirewallRule -DisplayName $FirewallRule -ErrorAction SilentlyContinue )
+	return $( Get-NetFirewallRule -DisplayName $Prefix -ErrorAction SilentlyContinue )
 }
 
 
 # création règle pare feu
 function fw_rule_create {
 	if ( ! $( fw_rule_exists ) ) {
-		New-NetFirewallRule -DisplayName $FirewallRule -Enabled False -Direction Inbound -Action Block
+		New-NetFirewallRule -DisplayName $Prefix -Enabled False -Direction Inbound -Action Block
 	}
 }
 
@@ -184,7 +190,7 @@ function fw_rule_create {
 function fw_rule_update ( $ip ) {
 	if ( $ip.Count -ge 1 ) {
 		fw_rule_create
-		Get-NetFirewallRule -DisplayName $FirewallRule | Get-NetFirewallAddressFilter | Set-NetFirewallAddressFilter -RemoteAddress $ip
+		Get-NetFirewallRule -DisplayName $Prefix | Get-NetFirewallAddressFilter | Set-NetFirewallAddressFilter -RemoteAddress $ip
 	} else {
 		fw_rule_remove
 	}
@@ -193,43 +199,41 @@ function fw_rule_update ( $ip ) {
 
 # suppression règle pare-feu
 function fw_rule_remove {
-	Remove-NetFirewallRule -DisplayName $FirewallRule -ErrorAction SilentlyContinue
+	Remove-NetFirewallRule -DisplayName $Prefix -ErrorAction SilentlyContinue
 }
 
 
 #:! recherche d'une tâche planifiée
 function schtask_exists {
-	
+	$r = $true
+	if ( ! $( Get-ScheduledTask | Where-Object {$_.TaskName -eq $taskname_exp } ) ) { $r = $false }
+	if ( ! $( Get-ScheduledTask | Where-Object {$_.TaskName -eq $taskname_trg } ) ) { $r = $false }
+	return $r
 }
 
 
-#:! ajout d'une tâche planifiée
-# en entrée : $src = @ ( @{ "Path" = "Security" ; "EventID" = "4625" [; "Provider" = "MWSA"] } ,
-#                        @{ "Path" = "Security" ; "EventID" = "4625" [; "Provider" = "MWSA"] } }
-# deux tâches réalisées par cette focntion :
-# - créer la tâche d'expiration
-# - créer la tâche trigger (avec argument expire)
+# ajout d'une tâche planifiée
 function schtask_create () {
 	if ( ! $( schtask_exists ) ) {
-		$img_name = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
-		$TaskUser = "meuh"
-
-		$A = New-ScheduledTaskAction -Execute $img_name -Argument $wail2banScript
+		$Aexp = New-ScheduledTaskAction -Execute $img_name -Argument "$wail2banScript -expire"
+		$Atrg = New-ScheduledTaskAction -Execute $img_name -Argument $wail2banScript
 		$P = New-ScheduledTaskPrincipal -RunLevel Highest -UserId $TaskUser -LogonType S4U
 		$S = New-ScheduledTaskSettingsSet -Compatibility Vista
 		$T = New-ScheduledTaskTrigger -Daily -At "00:00"
 
-		$Dexp = New-ScheduledTask -Action $A -Principal $P -Settings $S -Trigger = $T
-		
-		$Dtrg = New-ScheduledTask -Action $A -Principal $P -Settings $S
-		
-		Register-ScheduledTask "Dexp" -InputObject $Dexp
-		Register-ScheduledTask "Dtrg" -InputObject $Dtrg
+		$Dexp = New-ScheduledTask -Action $Aexp -Principal $P -Settings $S -Trigger $T
+		$Dtrg = New-ScheduledTask -Action $Atrg -Principal $P -Settings $S
+
+		Register-ScheduledTask $taskname_exp -InputObject $Dexp
+		Register-ScheduledTask $taskname_tgr -InputObject $Dtrg
 	}
 }
 
 
 # https://social.technet.microsoft.com/Forums/windowsserver/en-US/c2e778f6-4f63-4a07-9557-d13220ba808a/schedule-job-i-need-to-add-custom-eventtrigger-using-powershell?forum=winserverpowershell
+#:! vérifier la subscription
+# en entrée : $src = @ ( @{ "Path" = "Security" ; "EventID" = "4625" [; "Provider" = "MWSA"] } ,
+#                        @{ "Path" = "Security" ; "EventID" = "4625" [; "Provider" = "MWSA"] } }
 function schtask_update ( $evts ) {
 	schtask_create
 
@@ -242,14 +246,14 @@ function schtask_update ( $evts ) {
 		$Ts +=  $T
 	}
 
-	Set-ScheduledTask -TaskName "Dtrg" -Trigger $Ts
+	Set-ScheduledTask -TaskName $taskname_tgr -Trigger $Ts
 }
 
 
-#:! suppression d'une tâche planifiée
+# suppression d'une tâche planifiée
 function schtask_remove () {
-	Unregister-ScheduledTask -Taskname "Dexp" -ErrorAction SilentlyContinue
-	Unregister-ScheduledTask -Taskname "Dtrg" -ErrorAction SilentlyContinue
+	Unregister-ScheduledTask -Taskname $taskname_exp -ErrorAction SilentlyContinue
+	Unregister-ScheduledTask -Taskname $taskname_tgr -ErrorAction SilentlyContinue
 }
 
 
@@ -296,7 +300,7 @@ function ban_write ( $bans ) {
 
 
 # Ban the IP (with checking)
-# lecture bans, ajout ban, écriture bans, màj parefeu, logfile, logwin, mail
+# lecture bans, ajout ban, écriture bans, màj parefeu, logfile, mail
 #:!
 function ban ( $ip ) {
 	if ( is_whitelisted ( $ip ) ) {
@@ -351,24 +355,31 @@ if ( $help.IsPresent ) {
 }
 
 
-#:!
+#
 if ( $reg.IsPresent ) {
-	actioned "Intégration de $FirewallRule"
-	# vérif existence tâche expiration
-	# --> création tâche expiration
-	# analyse config
-	# recherche des tâches d'interception
-	# --> si une tâche a sa ligne de config -> suppression ligne de config
-	# --> si une tâche N'a PAS sa ligne de config -> suppression tâche
-	# ajout des tâches restantes dans la config
+	actioned "Intégration de $Prefix"
+	schtask_update
 	exit 0
 }
 
 
-#:!
+#
 if ( $unreg.IsPresent ) {
-	# supprimer tâche d'expiration
-	# supprimer tâches d'interception
+	actioned "désintégration de $Prefix"
+	schtask_remove
+	fw_rule_remove
+	exit 0
+}
+
+
+#
+if ( $unban -ne "" ) {
+	actioned "Débanissment de $unban demandé..."
+	$now = epoch ( get-date )
+	$b = ban_read
+	$b | ? { $_.ip -eq $unban -and $_.release -ge $now } | % { $_.release = $now - 1 }
+	ban_write ( $b )
+	fw_rule_update ( ip_of_not_expired_bans ( $b ) )
 	exit 0
 }
 
