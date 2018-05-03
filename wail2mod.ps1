@@ -2,10 +2,10 @@
 #  init
 #
 param(
-	[switch]$reg,
+    [switch]$reg,
 	[switch]$help,
-	[switch]$unreg,
-	[string]$unban
+    [switch]$unreg,
+    [string]$unban
 )
 
 $Prefix = "Wail2Ban"
@@ -15,11 +15,11 @@ $Prefix = "Wail2Ban"
 #
 $img_name = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 
-$wail2banInstall	= $MyInvocation.MyCommand.Source.Replace( $MyInvocation.MyCommand.Name, "")
-$wail2banScript		= $MyInvocation.MyCommand.Source
-$ConfigFile			= $wail2banInstall+$Prefix+"_config.xml"
-$BannedIPLog		= $wail2banInstall+$Prefix+"_ban.xml"
-$logFile			= $wail2banInstall+$Prefix+"_log.log"
+$wail2banInstall = $MyInvocation.MyCommand.Source.Replace( $MyInvocation.MyCommand.Name, "")
+$wail2banScript  = $MyInvocation.MyCommand.Source
+$ConfigFile      = $wail2banInstall+$Prefix+"_config.xml"
+$BannedIPLog     = $wail2banInstall+$Prefix+"_ban.xml"
+$logFile         = $wail2banInstall+$Prefix+"_log.log"
 
 
 ################################################################################
@@ -37,10 +37,10 @@ $Check_Count		= $cfg.wail2ban.conf.check_count
 $Max_BanDuration	= $cfg.wail2ban.conf.max_banduration
 $Categories			= $cfg.wail2ban.events.entry
 $WhiteList			= $cfg.wail2ban.whitelist.ip
-$TaskUser			= "meuh" # prendre le compte courant ?
+$TaskUser			= $env:USERNAME
 
-$taskname_exp		= "$Prefix - Expiration"
-$taskname_tgr		= "$Prefix - Trigger"
+$taskname_exp = "$Prefix - Expiration"
+$taskname_tgr = "$Prefix - Trigger"
 
 if ( $Check_Window		-lt 0 ) { exit 2 }
 if ( $Check_Count		-lt 0 ) { exit 2 }
@@ -56,11 +56,11 @@ $WhiteList += $( Get-NetIPAddress -AddressFamily IPv4 -AddressState Preferred ).
 #
 # affichage aide
 function help {
-	"`n$($MyInvocation.MyCommand.Name) `n"
-	"	-unban <ip>	: r√©voquer un bannissement (all = tout vider)"
-	"	-unreg		: supprimer t√¢ches planifi√©es et r√®gle de pare-feu (id = nom)"
-	"	-reg		: cr√©ation t√¢ches planifi√©es d'√©v√®nement + expiration (interval ?)"
-	"	-help		: --"
+	"`nwail2ban   `n"
+"	-unban <ip> : rÈvoquer un bannissement (all = tout vider)"
+"	-unreg      : supprimer t‚ches planifiÈes et rËgle de pare-feu (id = nom)"
+"	-reg        : crÈation t‚ches planifiÈes d'ÈvËnement + expiration (interval ?)"
+"	-help		: --"
 	" "
 }
 
@@ -71,20 +71,20 @@ function log ( $type, $text ) {
 
 	switch ( $type ) {
 		"D" {
-			write-debug $output
-		}
+            write-debug $output
+        }
 		"A" {
-			write-debug $output
-			$output | out-file $logfile -append
-		}
+            write-debug $output
+            $output | out-file $logfile -append
+        }
 		"W" {
-			write-warning "WARNING: $output"
-			$output | out-file $logfile -append
-		}
+            write-warning "WARNING: $output"
+            $output | out-file $logfile -append
+        }
 		"E" {
-			write-error "ERROR: $output"
-			$output | out-file $logfile -append
-		}
+            write-error "ERROR: $output"
+            $output | out-file $logfile -append
+        }
 	}
 }
 
@@ -111,30 +111,30 @@ function netmask ( $MaskLength ) {
 
 #
 function Get-WinEventData {
-	[cmdletbinding()]
-	param(
-		[Parameter(Mandatory=$true, 
-			ValueFromPipeline=$true,
-			ValueFromPipelineByPropertyName=$true, 
-			ValueFromRemainingArguments=$false, 
-			Position=0 )]
-		[System.Diagnostics.Eventing.Reader.EventLogRecord[]]
-		$event
-	)
+    [cmdletbinding()]
+    param(
+        [Parameter(Mandatory=$true, 
+                   ValueFromPipeline=$true,
+                   ValueFromPipelineByPropertyName=$true, 
+                   ValueFromRemainingArguments=$false, 
+                   Position=0 )]
+        [System.Diagnostics.Eventing.Reader.EventLogRecord[]]
+        $event
+    )
 
-	Process {
-		foreach ( $entry in $event ) {
-			$XML = [xml]$entry.ToXml()
-			$XMLData = $null
-			if( $XMLData = @( $XML.Event.EventData.Data ) ) {
-				For( $i=0; $i -lt $XMLData.count; $i++ ) {
-					Add-Member -InputObject $entry -MemberType NoteProperty -name "EventData$($XMLData[$i].name)" -Value $XMLData[$i].'#text' -Force
-				}
-			}
+    Process {
+        foreach ( $entry in $event ) {
+            $XML = [xml]$entry.ToXml()
+            $XMLData = $null
+            if( $XMLData = @( $XML.Event.EventData.Data ) ) {
+                For( $i=0; $i -lt $XMLData.count; $i++ ) {
+                    Add-Member -InputObject $entry -MemberType NoteProperty -name "EventData$($XMLData[$i].name)" -Value $XMLData[$i].'#text' -Force
+                }
+            }
 
-			$entry
-		}
-	}
+            $entry
+        }
+    }
 }
 
 
@@ -146,7 +146,7 @@ function epoch ( $datetime ) {
 
 # EPOCH --> datetime
 function datetime ( $epoch ) {
-	return $( Get-Date -Date "1970/01/01" ).AddSeconds( $epoch )
+    return $( Get-Date -Date "1970/01/01" ).AddSeconds( $epoch )
 }
 
 
@@ -174,7 +174,7 @@ function is_whitelisted ( $ip ) {
 
 
 # obtention des ip des bans encore en vigueur
-# en entr√©e : cf. ban_write
+# en entrÈe : cf. ban_write
 function ip_of_not_expired_bans ( $bans ) {
 	$ips = @()
 	$now = epoch ( get-date )
@@ -187,21 +187,21 @@ function ip_of_not_expired_bans ( $bans ) {
 }
 
 
-# v√©rification pr√©sence r√®gle
+# vÈrification prÈsence rËgle
 function fw_rule_exists {
 	return $( Get-NetFirewallRule -DisplayName $Prefix -ErrorAction SilentlyContinue )
 }
 
 
-# cr√©ation r√®gle pare feu
+# crÈation rËgle pare feu
 function fw_rule_create {
 	if ( ! $( fw_rule_exists ) ) {
-		New-NetFirewallRule -DisplayName $Prefix -Enabled False -Direction Inbound -Action Block
+		New-NetFirewallRule -DisplayName $Prefix -Enabled True -Direction Inbound -Action Block
 	}
 }
 
 
-# mise √† jour r√®gle pare-feu avec toutes les IP √† bloquer (en array)
+# mise ‡ jour rËgle pare-feu avec toutes les IP ‡ bloquer (en array)
 function fw_rule_update ( $ip ) {
 	if ( $ip.Count -ge 1 ) {
 		fw_rule_create
@@ -212,20 +212,19 @@ function fw_rule_update ( $ip ) {
 }
 
 
-# suppression r√®gle pare-feu
+# suppression rËgle pare-feu
 function fw_rule_remove {
 	Remove-NetFirewallRule -DisplayName $Prefix -ErrorAction SilentlyContinue
 }
 
 
-# recherche d'une t√¢che planifi√©e
+# recherche d'une t‚che planifiÈe
 function schtask_exists {
-	return ( $(Get-ScheduledTask -taskname $taskname_exp -ErrorAction SilentlyContinue ) -and`
-			 $(Get-ScheduledTask -taskname $taskname_trg -ErrorAction SilentlyContinue ) )
+    return ( $(Get-ScheduledTask -taskname $taskname_exp -ErrorAction SilentlyContinue ) -and $(Get-ScheduledTask -taskname $taskname_trg -ErrorAction SilentlyContinue ) )
 }
 
 
-# ajout d'une t√¢che planifi√©e
+# ajout d'une t‚che planifiÈe
 function schtask_create () {
 	if ( ! $( schtask_exists ) ) {
 		$Aexp = New-ScheduledTaskAction -Execute $img_name -Argument "$wail2banScript -expire"
@@ -244,8 +243,7 @@ function schtask_create () {
 
 
 # https://social.technet.microsoft.com/Forums/windowsserver/en-US/c2e778f6-4f63-4a07-9557-d13220ba808a/schedule-job-i-need-to-add-custom-eventtrigger-using-powershell?forum=winserverpowershell
-#:! v√©rifier la subscription
-# en entr√©e : $src = @( @{ "Path" = "Security" ; "EventID" = "4625" ; "Provider" = "MWSA" } ,
+# en entrÈe : $src = @( @{ "Path" = "Security" ; "EventID" = "4625" ; "Provider" = "MWSA" } ,
 #                       @{ "Path" = "Security" ; "EventID" = "4625" ; "Provider" = "MWSA" } )
 function schtask_update ( $evts ) {
 	schtask_create
@@ -263,10 +261,10 @@ function schtask_update ( $evts ) {
 }
 
 
-# suppression d'une t√¢che planifi√©e
+# suppression d'une t‚che planifiÈe
 function schtask_remove () {
-	Unregister-ScheduledTask -Taskname $taskname_exp -ErrorAction SilentlyContinue
-	Unregister-ScheduledTask -Taskname $taskname_tgr -ErrorAction SilentlyContinue
+	Unregister-ScheduledTask -Taskname $taskname_exp -force -ErrorAction SilentlyContinue
+	Unregister-ScheduledTask -Taskname $taskname_tgr -force -ErrorAction SilentlyContinue
 }
 
 
@@ -275,14 +273,14 @@ function ban_read {
 	if ( test-path $BannedIPLog ) {
 		$r = @()
 		[xml]$ip = get-content $BannedIPLog
-		$ip.wail2ban.ban | % { $r += @{ "ip" = $_.ip ; "date" = $_.date ; "release" = $_.release } }
+		$ip.wail2ban.ban | % { [array]$r += @{ "ip" = $_.ip ; "date" = $_.date ; "release" = $_.release } }
 		return $r
 	}
 }
 
 
 # enregistrer liste des ban
-# accepte en entr√©e : @( @{ "ip" = "x.x.x.x" ; "date" = "EPOCH" ; "release" = EPOCH } ,
+# accepte en entrÈe : @( @{ "ip" = "x.x.x.x" ; "date" = "EPOCH" ; "release" = EPOCH } ,
 #						 @{ "ip" = "x.x.x.x" ; "date" = "EPOCH" ; "release" = EPOCH } )
 function ban_write ( $bans ) {
 	$w2b = new-object System.Xml.XmlDocument
@@ -311,13 +309,13 @@ function ban_write ( $bans ) {
 
 
 # Ban the IP (with checking)
-# lecture bans, ajout ban, √©criture bans, m√†j parefeu, logfile, mail
+# lecture bans, ajout ban, Ècriture bans, m‡j parefeu, logfile, mail
 #:!
 function ban ( $ip ) {
 	if ( is_whitelisted ( $ip ) ) {
-		warning "L'ip prot√©g√©e $ip a d√©clench√© un bannissement"
+		warning "L'ip protÈgÈe $ip a dÈclenchÈ un bannissement"
 	} else {
-		$b = ban_read
+		[array]$b = ban_read
 
 		$now = epoch ( get-date )
 		$b += @{ "ip" = $ip ; "date" = $now ; "release" = $( $now + $Max_BanDuration ) }
@@ -354,9 +352,9 @@ function detect {
 
 ################################################################################
 ################################################################################
-#	-unban <ip> : r√©voquer un bannissement (all = tout vider)
-#	-unreg      : supprimer t√¢ches planifi√©es et r√®gle de pare-feu (id = nom)
-#	-reg        : cr√©ation t√¢ches planifi√©es d'√©v√®nement + expiration (interval ?)
+#	-unban <ip> : rÈvoquer un bannissement (all = tout vider)
+#	-unreg      : supprimer t‚ches planifiÈes et rËgle de pare-feu (id = nom)
+#	-reg        : crÈation t‚ches planifiÈes d'ÈvËnement + expiration (interval ?)
 #   -help
 
 
@@ -369,7 +367,7 @@ if ( $help.IsPresent ) {
 
 #
 if ( $reg.IsPresent ) {
-	actioned "Int√©gration de $Prefix"
+	actioned "IntÈgration de $Prefix"
 	schtask_update ( $Categories )
 	fw_rule_update ( ip_of_not_expired_bans ( ban_read ) )
 	exit 0
@@ -378,7 +376,7 @@ if ( $reg.IsPresent ) {
 
 #
 if ( $unreg.IsPresent ) {
-	actioned "d√©sint√©gration de $Prefix"
+	actioned "dÈsintÈgration de $Prefix"
 	schtask_remove
 	fw_rule_remove
 	exit 0
@@ -387,7 +385,7 @@ if ( $unreg.IsPresent ) {
 
 #
 if ( $unban -ne "" ) {
-	actioned "D√©banissment de $unban demand√©..."
+	actioned "DÈbanissment de $unban demandÈ..."
 	$now = epoch ( get-date )
 	$b = ban_read
 	$b | ? { $_.ip -eq $unban -and $_.release -ge $now } | % { $_.release = $now - 1 }

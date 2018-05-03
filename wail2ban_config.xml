@@ -1,14 +1,12 @@
 <wail2ban>
 	<conf>
-		<check_window>120</check_window>
+		<check_window>600</check_window>
 		<check_count>3</check_count>
-		<max_banduration>7776000</max_banduration>
-		<log>Application</log>
+		<max_banduration>600</max_banduration>
+		<logfile>D:\_users\syslog\wail2mod.log</logfile>
 	</conf>
 	<events>
-		<entry source="Security" id="4625" desc="RDP Logins failures" Provider=""/>
-		<entry source="Security" id="94627" desc="Dummy failure" Provider=""/>
-		<entry source="Application" id="18456" desc="MSSQL Logins failures" Provider=""/>
+		<entry source="Security" id="4625" desc="RDP Logins failures" Provider="Microsoft-Windows-Security-Auditing"/>
 	</events>
 	<whitelist>
 		<ip>127.0.0.1</ip>
@@ -16,3 +14,4 @@
 		<ip>10.0.0.0/8</ip>
 	</whitelist>
 </wail2ban>
+
